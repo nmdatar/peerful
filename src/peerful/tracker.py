@@ -28,7 +28,7 @@ class Tracker:
     def __init__(self, host: str = '127.0.0.1', port: int = 6881):
         self.host = host
         self.port = port
-        self.swarms: Dict[str, Set[PeerInfo]] = {}  # info_hash -> set of peers
+        self.swarms: Dict[str, Dict[str, PeerInfo]] = {}  # info_hash -> peer_id -> PeerInfo
         self._server = None
 
     async def start(self):
@@ -106,8 +106,8 @@ class Tracker:
         
         # Add to swarm
         if info_hash not in self.swarms:
-            self.swarms[info_hash] = set()
-        self.swarms[info_hash].add(peer)
+            self.swarms[info_hash] = {}
+        self.swarms[info_hash][peer_id] = peer
         
         logger.info(f'Peer {peer_id} announced for {info_hash}')
         
@@ -121,9 +121,9 @@ class Tracker:
 
     async def _send_peer_list(self, info_hash: str, writer: StreamWriter, exclude_peer_id: Optional[str] = None):
         """Send list of peers in a swarm."""
-        peers = self.swarms.get(info_hash, set())
+        peers = self.swarms.get(info_hash, {})
         peer_list = [
-            p.to_dict() for p in peers
+            p.to_dict() for p in peers.values()
             if not exclude_peer_id or p.peer_id != exclude_peer_id
         ]
         
@@ -156,12 +156,12 @@ class Tracker:
         """Remove peer from all swarms."""
         for swarm in self.swarms.values():
             to_remove = None
-            for peer in swarm:
+            for peer in swarm.values():
                 if peer.writer == writer:
                     to_remove = peer
                     break
             if to_remove:
-                swarm.remove(to_remove)
+                del swarm[to_remove.peer_id]
 
 async def main():
     """Run the tracker server."""
